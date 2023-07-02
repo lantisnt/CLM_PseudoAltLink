@@ -31,16 +31,25 @@ local function GenerateConfigs(self, name, uid)
         -- childGroups = "select",
         order = uid,
         args = {
+            note = {
+                type = "description",
+                name = [=[This is a tailored plugin for very specific use case, where players need to gain EP/DKP on multiple characters while being able to spend it separately. Be sure to use only mains  when pseudo-linking so proper CLM alt-main linking can be utilized properly.
+Be also sure to check for any discrepancies after changing options / linking w.r.t. raid as this plugin will not be affected retroactively. It will create new events to handle the proper point updates.
+Plugin can be activated on raid creation or manually through /clm pseudolink. It will be deactivated automatically after 6 hours.]=],
+                width = "full",
+                order = 0
+            },
             enable = {
                 name = "Enable",
                 type = "toggle",
                 set = function(i, v) self.config[uid].enabled = v and true or false end,
                 get = function(i) return self.config[uid].enabled end,
-                width = 2,
+                width = 1,
                 order = 1
             },
             manual_raid_awards = {
                 name = CLM.L["Manual Raid Awards"],
+                desc = "Warning: This toogle does not apply when selecting award type of: On Time Bonus, Boss Kill Bonus or Raid Completion Bonus, Interval Bonus but the specific ones are use",
                 type = "toggle",
                 set = function(i, v) self.config[uid].manual_raid_awards = v and true or false end,
                 get = function(i) return self.config[uid].manual_raid_awards end,
@@ -71,10 +80,18 @@ local function GenerateConfigs(self, name, uid)
                 width = 1,
                 order = 5
             },
+            interval_bonus = {
+                name = CLM.L["Interval Bonus"],
+                type = "toggle",
+                set = function(i, v) self.config[uid].interval_bonus = v and true or false end,
+                get = function(i) return self.config[uid].interval_bonus end,
+                width = 1,
+                order = 6
+            },
             ruleset = {
                 name = "Ruleset",
                 type = "header",
-                order = 6,
+                order = 7,
                 width = "full"
             }
         },
@@ -94,7 +111,7 @@ local function GenerateConfigs(self, name, uid)
         table.sort(profileList)
     end
 
-    local order = 7
+    local order = 8
     for ruleset_id in ipairs(self.ruleset[uid] or {}) do
         opt.args["left_" .. ruleset_id] = {
             name = "",
@@ -104,6 +121,7 @@ local function GenerateConfigs(self, name, uid)
             set = function(i, v)
                 if self.ruleset[uid][ruleset_id].r == v or players_cache[v] then return end
                 self.ruleset[uid][ruleset_id].l = v
+                self.twoWayMap = nil -- Reset the map to force lazy rebuild
             end,
             get = function(i) return self.ruleset[uid][ruleset_id].l end,
             width = 1.35,
@@ -118,6 +136,7 @@ local function GenerateConfigs(self, name, uid)
             set = function(i, v)
                 if self.ruleset[uid][ruleset_id].l == v or players_cache[v] then return end
                 self.ruleset[uid][ruleset_id].r = v
+                self.twoWayMap = nil -- Reset the map to force lazy rebuild
             end,
             get = function(i) return self.ruleset[uid][ruleset_id].r end,
             width = 1.35,
@@ -131,6 +150,7 @@ local function GenerateConfigs(self, name, uid)
             image = "Interface\\Buttons\\UI-Panel-MinimizeButton-Up",
             func = function()
                 tremove(self.ruleset[uid], ruleset_id)
+                self.twoWayMap = nil -- Reset the map to force lazy rebuild
                 refreshFn(self)
             end,
             order = order
@@ -176,6 +196,7 @@ refreshFn = UpdateConfigs
 function PseudoLink:Initialize()
     self.config = InitializeDB("config")
     self.ruleset = InitializeDB("ruleset")
+
     UpdateConfigs(self)
 
     CLM.MODULES.LedgerManager:RegisterOnUpdate(function(lag, uncommitted)
@@ -185,8 +206,57 @@ function PseudoLink:Initialize()
     end)
 end
 
-local function pseudoLinkAwardCallback(raid, value, reason, action, note, pointChangeType, forceInstant)
+local function BuildTwoWayMap(self)
+    if #self.ruleset == 0 then return false end
+    self.twoWayMap = {}
+    for _, rule in ipairs(self.ruleset) do
+        if rule.l and rule.l ~= "" and rule.r and rule.r ~= "" and rule.l ~= rule.r then
+            self.twoWayMap[rule.l] = rule.r
+            self.twoWayMap[rule.r] = rule.l
+        end
+    end
+    return true
+end
 
+function PseudoLink:IsEnabled(rosterUid)
+    --return (self.config[rosterUid] or {}).enabled and (GetServerTime() - (self.config.startTime or 0) < 21600)
+    return true
+end
+function PseudoLink:ManualRaidAwards(rosterUid)
+    return (self.config[rosterUid] or {}).manual_raid_awards
+end
+function PseudoLink:BossKillBonus(rosterUid)
+    return (self.config[rosterUid] or {}).boss_kill_bonus
+end
+function PseudoLink:OnTimeBonus(rosterUid)
+    return (self.config[rosterUid] or {}).on_time_bonus
+end
+function PseudoLink:RaidCompletionBonus(rosterUid)
+    return (self.config[rosterUid] or {}).raid_completion_bonus
+end
+function PseudoLink:IntervalBonus(rosterUid)
+    return (self.config[rosterUid] or {}).interval_bonus
+end
+
+local function pseudoLinkAwardCallback(raid, value, reason, action, note, pointChangeType, forceInstant)
+    -- Checks
+    if not CLM.CONSTANTS.CONSTANTS.POINT_MANAGER_ACTION.MODIFY then return end
+    if type(value) ~= "number" then return end
+    if not UTILS.typeof(raid, CLM.MODELS.Raid) then return end
+    local uid = raid:Roster():UID()
+    if reason == CLM.CONSTANTS.POINT_CHANGE_REASON.ON_TIME_BONUS then
+        if not PseudoLink:OnTimeBonus(uid) then return end
+    elseif reason == CLM.CONSTANTS.POINT_CHANGE_REASON.BOSS_KILL_BONUS then
+        if not PseudoLink:BossKillBonus(uid) then return end
+    elseif reason == CLM.CONSTANTS.POINT_CHANGE_REASON.RAID_COMPLETION_BONUS then
+        if not PseudoLink:RaidCompletionBonus(uid) then return end
+    elseif reason == CLM.CONSTANTS.POINT_CHANGE_REASON.INTERVAL_BONUS then
+        if not PseudoLink:IntervalBonus(uid) then return end
+    end
+    -- Lazy build map
+    if not BuildTwoWayMap(PseudoLink) then return end
+    -- Detect targets
+    
 end
 
 hooksecurefunc(CLM.MODULES.PointManager, "UpdateRaidPoints", pseudoLinkAwardCallback)

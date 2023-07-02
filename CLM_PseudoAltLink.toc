@@ -14,7 +14,6 @@
 ## X-Donate: https://www.patreon.com/classiclootmanager
 ## X-License: Apache2
 ## X-Curse-Project-ID: 883117
-## SavedVariables: CLM2_DB, CLM2_Logs, CLM2_MinimapIcon
 ## LoadOnDemand: 0
 
 CLM_PseudoAltLink.lua
