@@ -1,0 +1,6 @@
+ignore:
+  - scripts
+  - assets
+
+manual-changelog:
+  markup-type: markdown

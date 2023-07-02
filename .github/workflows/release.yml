@@ -1,0 +1,57 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  create_github_release:
+    name: Create a release object in Github
+    runs-on: ubuntu-latest
+    steps:
+    - uses: Roang-zero1/github-create-release-action@v2.3.0
+      with:
+        version_regex: ^v[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+.*$
+        prerelease_regex:  ^v[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+-beta.*$
+        update_existing: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  packager_release:
+    needs:
+      - create_github_release
+    name: Package and Upload
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+#      - name: verify required files recursively
+#        run: scripts/verify-dependencies.sh ClassicLootManager.toc
+      - name: Bigwigs packager
+        uses: BigWigsMods/packager@master
+        env:
+          CF_API_KEY: ${{ secrets.CF_TOKEN }}
+          WAGO_API_TOKEN: ${{ secrets.WAGO_TOKEN }}
+          # GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: "-o -u -m .pkgmeta -S"
+      - name: Get name of zip file
+        run: echo "artifact=`readlink -f .release/*.zip`" >> $GITHUB_ENV
+      - name: Upload artifact to github
+        uses: fnkr/github-action-ghr@v1
+        env:
+          GHR_PATH: ${{ env.artifact }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  discord_announce:
+    needs:
+      - packager_release
+    name: Post a Discord Announcement
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: install disnake
+        run: pip3 install disnake
+      - name: announce
+        run: python3 scripts/post_release.py $WEBHOOK_URL
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
