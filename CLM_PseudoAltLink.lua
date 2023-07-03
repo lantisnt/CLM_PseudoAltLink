@@ -5,7 +5,6 @@ PRIV.CONSTANTS = {}
 local CLM = LibStub("ClassicLootManager").CLM
 local UTILS = CLM.UTILS
 
-
 PRIV.CONSTANTS.PLINK = "Pseudo Link"
 
 local PseudoLink = {}
@@ -238,11 +237,62 @@ function PseudoLink:IntervalBonus(rosterUid)
     return (self.config[rosterUid] or {}).interval_bonus
 end
 
+local function GetSourceDict(raid)
+    local source = {}
+    local in_raid
+    if raid:Configuration():Get("autoAwardIncludeBench") then
+        in_raid = raid:AllPlayers()
+    else
+        in_raid = raid:Players()
+    end
+    -- Raid targets should be unique list of GUIDs
+    local roster = raid:Roster()
+    for _,GUID in ipairs(in_raid) do
+        local mainProfile = nil
+        if not roster:IsProfileInRoster(GUID) then
+            CLM.LOG:Debug("CLM PLINK pseudoLinkAward(): Unknown profile guid [%s] in roster [%s]", GUID, roster:UID())
+        else
+            local targetProfile = CLM.MODULES.ProfileManager:GetProfileByGUID(GUID)
+            if targetProfile and not targetProfile:IsLocked() then
+                -- Check if we have main-alt linking
+                if targetProfile:Main() == "" then -- is main
+                    if targetProfile:HasAlts() then -- has alts
+                        mainProfile = targetProfile
+                    end
+                else -- is alt
+                    mainProfile = CLM.MODULES.ProfileManager:GetProfileByGUID(targetProfile:Main())
+                end
+                if roster:IsProfileInRoster(mainProfile:GUID()) then
+                    source[mainProfile:Name()] = mainProfile:GUID()
+                end
+            end
+        end
+    end
+    return source
+end
+
+local function SanitizeSource(self, source)
+    for l, r in pairs(self.twoWayMap) do
+        if source[l] and source[r] then -- Remove if both sides of the rule are in sources
+            source[l] = nil
+            source[r] = nil
+        end
+    end
+end
+
+local function GetTargetsList(source)
+    local targets = {}
+    for _,GUID in pairs(source) do
+        targets[#targets+1] = GUID
+    end
+    return targets
+end
+
 local function pseudoLinkAwardCallback(raid, value, reason, action, note, pointChangeType, forceInstant)
-    -- Checks
     if not CLM.CONSTANTS.CONSTANTS.POINT_MANAGER_ACTION.MODIFY then return end
     if type(value) ~= "number" then return end
     if not UTILS.typeof(raid, CLM.MODELS.Raid) then return end
+    if not PseudoLink:IsEnabled() then return end
     local uid = raid:Roster():UID()
     if reason == CLM.CONSTANTS.POINT_CHANGE_REASON.ON_TIME_BONUS then
         if not PseudoLink:OnTimeBonus(uid) then return end
@@ -253,10 +303,17 @@ local function pseudoLinkAwardCallback(raid, value, reason, action, note, pointC
     elseif reason == CLM.CONSTANTS.POINT_CHANGE_REASON.INTERVAL_BONUS then
         if not PseudoLink:IntervalBonus(uid) then return end
     end
+
     -- Lazy build map
     if not BuildTwoWayMap(PseudoLink) then return end
-    -- Detect targets
-    
+    -- Build actual source list
+    local source = GetSourceDict(raid)
+    -- Sanitize source dict
+    SanitizeSource(PseudoLink, source)
+    -- Get targets
+    local targets = GetTargetsList(source)
+    -- Award points
+    CLM.MODULES.PointManager:UpdatePoints(raid:Roster(), targets, value, reason, action, note, pointChangeType, forceInstant)
 end
 
 hooksecurefunc(CLM.MODULES.PointManager, "UpdateRaidPoints", pseudoLinkAwardCallback)
