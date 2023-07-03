@@ -205,10 +205,11 @@ function PseudoLink:Initialize()
     end)
 end
 
-local function BuildTwoWayMap(self)
-    if #self.ruleset == 0 then return false end
+local function BuildTwoWayMap(self, uid)
+    if self.twoWayMap then return true end
+    if #self.ruleset[uid] == 0 then return false end
     self.twoWayMap = {}
-    for _, rule in ipairs(self.ruleset) do
+    for _, rule in ipairs(self.ruleset[uid]) do
         if rule.l and rule.l ~= "" and rule.r and rule.r ~= "" and rule.l ~= rule.r then
             self.twoWayMap[rule.l] = rule.r
             self.twoWayMap[rule.r] = rule.l
@@ -256,9 +257,7 @@ local function GetSourceDict(raid)
             if targetProfile and not targetProfile:IsLocked() then
                 -- Check if we have main-alt linking
                 if targetProfile:Main() == "" then -- is main
-                    if targetProfile:HasAlts() then -- has alts
-                        mainProfile = targetProfile
-                    end
+                    mainProfile = targetProfile
                 else -- is alt
                     mainProfile = CLM.MODULES.ProfileManager:GetProfileByGUID(targetProfile:Main())
                 end
@@ -280,16 +279,32 @@ local function SanitizeSource(self, source)
     end
 end
 
-local function GetTargetsList(source)
+local function GetTargetsList(self, source)
     local targets = {}
-    for _,GUID in pairs(source) do
-        targets[#targets+1] = GUID
+    for name,_ in pairs(source) do
+        local profile = CLM.MODULES.ProfileManager:GetProfileByName(self.twoWayMap[name])
+        if profile then
+            targets[#targets+1] = profile
+        end
     end
     return targets
 end
 
-local function pseudoLinkAwardCallback(raid, value, reason, action, note, pointChangeType, forceInstant)
-    if not CLM.CONSTANTS.CONSTANTS.POINT_MANAGER_ACTION.MODIFY then return end
+local function PseudoLinkAward(raid, value, reason, action, note, pointChangeType, forceInstant)
+    -- Lazy build map
+    if not BuildTwoWayMap(PseudoLink, raid:Roster():UID()) then return end
+    -- Build actual source list
+    local source = GetSourceDict(raid)
+    -- Sanitize source dict
+    SanitizeSource(PseudoLink, source)
+    -- Get targets
+    local targets = GetTargetsList(PseudoLink, source)
+    -- Award points
+    CLM.MODULES.PointManager:UpdatePoints(raid:Roster(), targets, value, reason, action, note, pointChangeType, forceInstant)
+end
+
+local function pseudoLinkAwardCallback(_, raid, value, reason, action, note, pointChangeType, forceInstant)
+    if not CLM.CONSTANTS.POINT_MANAGER_ACTION.MODIFY then return end
     if type(value) ~= "number" then return end
     if not UTILS.typeof(raid, CLM.MODELS.Raid) then return end
     if not PseudoLink:IsEnabled() then return end
@@ -303,17 +318,9 @@ local function pseudoLinkAwardCallback(raid, value, reason, action, note, pointC
     elseif reason == CLM.CONSTANTS.POINT_CHANGE_REASON.INTERVAL_BONUS then
         if not PseudoLink:IntervalBonus(uid) then return end
     end
-
-    -- Lazy build map
-    if not BuildTwoWayMap(PseudoLink) then return end
-    -- Build actual source list
-    local source = GetSourceDict(raid)
-    -- Sanitize source dict
-    SanitizeSource(PseudoLink, source)
-    -- Get targets
-    local targets = GetTargetsList(source)
-    -- Award points
-    CLM.MODULES.PointManager:UpdatePoints(raid:Roster(), targets, value, reason, action, note, pointChangeType, forceInstant)
+    C_Timer.After(0.250, function()
+        PseudoLinkAward(raid, value, reason, action, note, pointChangeType, forceInstant)
+    end)
 end
 
 hooksecurefunc(CLM.MODULES.PointManager, "UpdateRaidPoints", pseudoLinkAwardCallback)
