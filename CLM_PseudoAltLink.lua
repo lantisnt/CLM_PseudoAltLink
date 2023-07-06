@@ -282,7 +282,7 @@ end
 local function GetTargetsList(self, source)
     local targets = {}
     for name,_ in pairs(source) do
-        local profile = CLM.MODULES.ProfileManager:GetProfileByName(self.twoWayMap[name])
+        local profile = CLM.MODULES.ProfileManager:GetProfileByName(self.twoWayMap[name] or "")
         if profile then
             targets[#targets+1] = profile
         end

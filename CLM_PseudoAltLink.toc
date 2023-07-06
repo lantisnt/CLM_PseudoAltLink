@@ -10,7 +10,8 @@
 ## IconTexture: Interface/AddOns/ClassicLootManager/Media/Icons/clm-dark-128.tga
 ## AddonCompartmentFunc: CLM_Binding_ToggleGUI_UnifiedGUI
 ## Version: @project-version@
-## OptionalDeps: LibStub, ClassicLootManager, Ace3, ViragDevTool
+## RequiredDeps: ClassicLootManager
+## OptionalDeps: LibStub, Ace3, ViragDevTool
 ## X-Donate: https://www.patreon.com/classiclootmanager
 ## X-License: Apache2
 ## X-Curse-Project-ID: 883117
