@@ -9,6 +9,7 @@ jobs:
     name: Create a release object in Github
     runs-on: ubuntu-latest
     steps:
+    - uses: actions/checkout@v3
     - uses: Roang-zero1/github-create-release-action@v2.3.0
       with:
         version_regex: ^v[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+.*$
@@ -23,7 +24,7 @@ jobs:
     name: Package and Upload
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Bigwigs packager
         uses: BigWigsMods/packager@master
         env:
