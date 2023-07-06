@@ -97,10 +97,9 @@ Plugin can be activated on raid creation or manually through /clm pseudolink. It
     }
 
     local roster = CLM.MODULES.RosterManager:GetRosterByUid(uid)
-    local profiles, profileNameMap, profileList = {}, {}, {}
+    local profileNameMap, profileList = {}, {}
     if roster then
-        profiles = roster:Profiles()
-        for _, GUID in ipairs(profiles) do
+        for _, GUID in ipairs(roster:Profiles()) do
             local profile = CLM.MODULES.ProfileManager:GetProfileByGUID(GUID)
             if profile then
                 profileNameMap[profile:Name()] = UTILS.ColorCodeText(profile:Name(), UTILS.GetClassColor(profile:Class()).hex)
@@ -172,7 +171,6 @@ Plugin can be activated on raid creation or manually through /clm pseudolink. It
         width = 1.35,
         order = order
     }
-    order = order + 1
 
     return opt
 end
@@ -249,7 +247,7 @@ local function GetSourceDict(raid)
     -- Raid targets should be unique list of GUIDs
     local roster = raid:Roster()
     for _,GUID in ipairs(in_raid) do
-        local mainProfile = nil
+        local mainProfile
         if not roster:IsProfileInRoster(GUID) then
             CLM.LOG:Debug("CLM PLINK pseudoLinkAward(): Unknown profile guid [%s] in roster [%s]", GUID, roster:UID())
         else
