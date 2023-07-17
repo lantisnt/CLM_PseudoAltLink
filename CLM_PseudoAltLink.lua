@@ -3,6 +3,15 @@ local _, PRIV = ...
 PRIV.CONSTANTS = {}
 
 local CLM = LibStub("ClassicLootManager").CLM
+
+local serdes = LibStub("LibSerialize")
+local codec = LibStub("LibDeflate")
+
+local SERIALIZATION_OPTIONS = {
+    errorOnUnserializableType = false,
+    stable = false,
+}
+
 local UTILS = CLM.UTILS
 
 PRIV.CONSTANTS.PLINK = "Pseudo Link"
@@ -87,12 +96,93 @@ Plugin can be activated on raid creation or manually through /clm pseudolink. It
                 width = 1,
                 order = 6
             },
+            export_string = {
+                name = "Export string",
+                type = "input",
+                set = function(i, v) end,
+                get = function(i) return self.export_string or "" end,
+                width = 2,
+                order = 7
+            },
+            generate_export_string = {
+                name = "Generate",
+                type = "execute",
+                func = function(i, v)
+                    local tmp = serdes:SerializeEx(SERIALIZATION_OPTIONS, {
+                        config = self.config,
+                        ruleset = self.ruleset
+                    })
+                    if tmp == nil then
+                        CLM.LOG:Error("PLink Export: unable to serialize")
+                        return false
+                    end
+                    tmp = codec:CompressDeflate(tmp, { level = 4 })
+                    if tmp == nil then
+                        CLM.LOG:Error("PLink Export: unable to compress")
+                        return false
+                    end
+                    self.export_string = codec:EncodeForPrint(tmp)
+                end,
+                width = 1,
+                order = 8
+            },
+            import_string = {
+                name = "Import string",
+                type = "input",
+                set = function(i, v)
+                    self.import_string = v
+                    -- Decode
+                    local tmp = codec:DecodeForPrint(v)
+                    if tmp == nil then
+                        CLM.LOG:Error("PLink Import: unable to decode import string")
+                        return
+                    end
+                    -- Decompress
+                    tmp = codec:DecompressDeflate(tmp)
+                    if tmp == nil then
+                        CLM.LOG:Error("PLink Import: unable to decompress import string")
+                        return
+                    end
+                    -- Deserialize
+                    local success
+                    success, tmp = serdes:Deserialize(tmp)
+                    if not success then
+                        CLM.LOG:Error("PLink Import: unable to deserialize import string")
+                        return
+                    end
+                    if type(tmp.config) ~= "table" then
+                        CLM.LOG:Error("PLink Import: missing config")
+                        return false
+                    end
+                    if type(tmp.ruleset) ~= "table" then
+                        CLM.LOG:Error("PLink Import: missing ruleset")
+                        return false
+                    end
+                    -- Wipe data 
+                    for key,_ in pairs(self.config) do
+                        self.config[key] = nil
+                    end
+                    for key,_ in pairs(self.ruleset) do
+                        self.ruleset[key] = nil
+                    end
+                    for key, value in pairs(tmp.config) do
+                        self.config[key] = UTILS.DeepCopy(value)
+                    end
+                    for key, value in pairs(tmp.ruleset) do
+                        self.ruleset[key] = UTILS.DeepCopy(value)
+                    end
+                    refreshFn(self)
+                end,
+                get = function(i) return self.import_string or "" end,
+                width = "full",
+                order = 9
+            },
             ruleset = {
                 name = "Ruleset",
                 type = "header",
-                order = 7,
+                order = 10,
                 width = "full"
-            }
+            },
         },
     }
 
@@ -109,7 +199,7 @@ Plugin can be activated on raid creation or manually through /clm pseudolink. It
         table.sort(profileList)
     end
 
-    local order = 8
+    local order = 11
     for ruleset_id in ipairs(self.ruleset[uid] or {}) do
         opt.args["left_" .. ruleset_id] = {
             name = "",
@@ -217,8 +307,9 @@ local function BuildTwoWayMap(self, uid)
 end
 
 function PseudoLink:IsEnabled(rosterUid)
-    --return (self.config[rosterUid] or {}).enabled and (GetServerTime() - (self.config.startTime or 0) < 21600)
-    return true
+    -- return (self.config[rosterUid] or {}).enabled and (GetServerTime() - (self.config.startTime or 0) < 21600)
+    -- return true
+    return (self.config[rosterUid] or {}).enabled
 end
 function PseudoLink:ManualRaidAwards(rosterUid)
     return (self.config[rosterUid] or {}).manual_raid_awards
