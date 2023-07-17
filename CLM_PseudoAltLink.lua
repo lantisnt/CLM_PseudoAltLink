@@ -158,7 +158,7 @@ Plugin can be activated on raid creation or manually through /clm pseudolink. It
                         CLM.LOG:Error("PLink Import: missing ruleset")
                         return false
                     end
-                    -- Wipe data 
+                    -- Wipe data
                     for key,_ in pairs(self.config) do
                         self.config[key] = nil
                     end
